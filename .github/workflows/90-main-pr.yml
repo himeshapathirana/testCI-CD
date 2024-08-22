@@ -1,0 +1,9 @@
+name: main-pull-request
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+jobs:
+  test-analyze:
+    uses: ./.github/workflows/01-test-analyze.yml

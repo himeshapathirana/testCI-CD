@@ -1,0 +1,54 @@
+name: integration-screenshot-ios
+on:
+  workflow_call:
+    inputs:
+      model:
+        required: true
+        type: string
+
+jobs:
+  take-screenshot-ios:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        model: ${{ fromJson(inputs.model) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download app
+        uses: actions/download-artifact@v4
+        with:
+          name: app-simulator-build
+          path: build/ios/iphonesimulator/Runner.app
+
+      - name: Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:'
+          cache-path: "${{ runner.tool_cache }}/flutter/:channel:-:version:-:arch:"
+      - uses: futureware-tech/simulator-action@v3
+        with:
+          model: ${{ matrix.model }}
+      - run: >-
+          flutter drive
+          --driver=test_driver/screenshot_test.dart
+          --use-application-binary=build/ios/iphonesimulator/Runner.app
+
+      - name: Append model name to all files in screenshots folder
+        run: |
+          for file in screenshots/*; do
+            filename=$(basename "$file")
+            mv "$file" "screenshots/${{ matrix.model }}-$filename"
+          done
+
+      - name: Archive screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-screenshot-${{ matrix.model }}
+          path: screenshots
+          if-no-files-found: error
+          retention-days: 7

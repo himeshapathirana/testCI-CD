@@ -1,0 +1,70 @@
+# This file contains the fastlane.tools configuration
+# You can find the documentation at https://docs.fastlane.tools
+#
+# For a list of all available actions, check out
+#
+#     https://docs.fastlane.tools/actions
+#
+# For a list of all available plugins, check out
+#
+#     https://docs.fastlane.tools/plugins/available-plugins
+#
+
+# Uncomment the line if you want fastlane to automatically update itself
+# update_fastlane
+
+default_platform(:android)
+
+platform :android do
+
+    before_all do |lane, options|
+        setup_ci if ENV['CI']
+    end
+
+    lane :versioning do
+        json_key = ENV['PLAY_STORE_CONFIG_JSON'] ? ENV['PLAY_STORE_CONFIG_JSON'] : File.read("../key.json")
+        previous_build_number = google_play_track_version_codes(
+          track: "internal",
+          json_key_data: json_key,
+        )[0]
+        current_build_number = previous_build_number + 1
+
+        tag = last_git_tag(pattern: "v[0-9].*")
+
+        version_name = tag[1..-1]
+        version_code = current_build_number.to_s
+        UI.message("Version name: #{version_name}")
+        UI.message("Version code: #{version_code}")
+
+        ENV["ANDROID_VERSION_NAME"] = version_name
+        ENV["ANDROID_VERSION_CODE"] = version_code
+
+        sh("echo \"ANDROID_VERSION_NAME=#{version_name}\" >> $GITHUB_ENV") if ENV['CI']
+        sh("echo \"ANDROID_VERSION_CODE=#{version_code}\" >> $GITHUB_ENV") if ENV['CI']
+    end
+
+
+    desc "Deploy a new version to the Google Play internal track"
+    lane :internal do
+        json_key = ENV['PLAY_STORE_CONFIG_JSON'] ? ENV['PLAY_STORE_CONFIG_JSON'] : File.read("../key.json")
+        # If this stage fails check if there is an existing version with the same version code
+        # If so, delete it from the Google Play Console or manually increment the version code to a latter value
+        upload_to_play_store(
+            skip_upload_apk: true,
+            skip_upload_changelogs: true,
+            track: "internal",
+            aab: "../build/app/outputs/bundle/release/app-release.aab",
+            json_key_data: json_key,
+            # Change to "completed" once your app is ready to publish
+            release_status: "draft",
+            timeout: 600,
+        )
+    end
+
+    lane :build do
+        UI.message("Version name: #{ENV["ANDROID_VERSION_NAME"]}")
+        UI.message("Version code: #{ENV["ANDROID_VERSION_CODE"]}")
+        flutter = ENV['FLUTTER']
+        sh("flutter", "build", "appbundle",  "--build-number", ENV["ANDROID_VERSION_CODE"].to_s, "--build-name", ENV["ANDROID_VERSION_NAME"], "--target", "lib/main.dart")
+    end
+end

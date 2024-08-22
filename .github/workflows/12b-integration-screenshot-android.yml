@@ -1,0 +1,90 @@
+name: integration-screenshot-android
+on:
+  workflow_call:
+    inputs:
+      api_level:
+        description: 'Android API level'
+        required: true
+        type: number
+      model:
+        description: 'Android device model id'
+        required: true
+        type: string
+
+jobs:
+  take-screenshot-android:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    env:
+      API_LEVEL: ${{ inputs.api_level }}
+      CORES: 3
+    strategy:
+      matrix:
+        model: ${{ fromJson(inputs.model) }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: Gradle cache
+        uses: gradle/gradle-build-action@v3
+
+      - name: Download app
+        uses: actions/download-artifact@v4
+        with:
+          name: app-debug.apk
+
+      - name: Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:'
+          cache-path: "${{ runner.tool_cache }}/flutter/:channel:-:version:-:arch:"
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ env.API_LEVEL }}
+
+      - name: create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.API_LEVEL }}
+          profile: ${{ matrix.model }}
+          target: google_apis
+          cores: ${{ env.CORES }}
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: avdmanager list device
+
+      - name: run tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.API_LEVEL }}
+          profile: ${{ matrix.model }}
+          target: google_apis
+          cores: ${{ env.CORES }}
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: "flutter drive --driver=test_driver/screenshot_test.dart --use-application-binary=app-debug.apk"
+
+      - name: Append model name to all files in screenshots folder
+        run: |
+          for file in screenshots/*; do
+            filename=$(basename "$file")
+            mv "$file" "screenshots/${{ matrix.model }}-$filename"
+          done
+
+      - name: Archive screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-screenshot-${{ matrix.model }}
+          path: screenshots
+          if-no-files-found: error
+          retention-days: 7

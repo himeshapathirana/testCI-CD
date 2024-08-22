@@ -1,0 +1,48 @@
+name: integration-screenshot-commit-ios
+on:
+  workflow_call:
+    inputs:
+      locale:
+        required: true
+        type: string
+    secrets:
+      token:
+        required: true
+
+jobs:
+  commit-screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        locale: ${{ fromJson(inputs.locale) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: screenshots
+
+      - name: Move ios screenshots
+        run: |
+          mkdir -p ios/fastlane/screenshots/${{ matrix.locale }}
+          find ./screenshots -type f -path '*/ios-*/*' -exec cp {} ios/fastlane/screenshots/${{ matrix.locale }} \;
+
+      - name: Check for changes in ios/fastlane/screenshots/${{ matrix.locale }}
+        id: git-diff
+        run: |
+          git diff --quiet -- 'ios/fastlane/screenshots/${{ matrix.locale }}' || (echo "Changes exist in ios screenshots" && echo changes=true >> $GITHUB_OUTPUT)
+        continue-on-error: true
+
+      - name: Commit screenshots
+        if: steps.git-diff.outputs.changes == 'true'
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "action@github.com"
+          git config pull.rebase true 
+          git add ios/fastlane/screenshots/${{ matrix.locale }}
+          git commit -m "chore: Update screenshots iOS" -m  "[skip ci]"
+          git pull && git push

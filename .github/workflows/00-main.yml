@@ -1,0 +1,128 @@
+name: main-workflow
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+jobs:
+  token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GH_TOKEN
+        if: env.GH_TOKEN == ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "GH_TOKEN=${GITHUB_TOKEN}" >> $GITHUB_ENV
+
+  test-analyze:
+    uses: ./.github/workflows/01-test-analyze.yml
+
+  conventional-release:
+    needs:
+      - test-analyze
+    uses: ./.github/workflows/02-conventional-release.yml
+    secrets: inherit
+
+  parse-screenshot:
+    uses: ./.github/workflows/11-parse-screenshot.yml
+    with:
+      # Set to empty string to always take screenshots
+      screenshot-text: "SCREENSHOT"
+
+  build-ios:
+    # set if false to disable iOS branch of build
+    if: ${{ needs.conventional-release.outputs.new_release_published == 'true' }}
+    needs:
+      - conventional-release
+      - parse-screenshot
+    uses: ./.github/workflows/03a-build-ios.yml
+    with:
+      screenshot: ${{ needs.parse-screenshot.outputs.contains_screenshot }}
+      ipa: "true"
+    secrets: inherit
+
+  upload-ios:
+    if: ${{ needs.parse-screenshot.outputs.contains_screenshot == 'false' }}
+    needs:
+      - parse-screenshot
+      - build-ios
+    uses: ./.github/workflows/21a-upload-release-ios.yml
+    secrets: inherit
+
+  build-android:
+    # set if false to disable android branch of build
+    if: ${{ needs.conventional-release.outputs.new_release_published == 'true' }}
+    needs:
+      - conventional-release
+      - parse-screenshot
+    uses: ./.github/workflows/03b-build-android.yml
+    with:
+      screenshot: ${{ needs.parse-screenshot.outputs.contains_screenshot }}
+      apk: "true"
+    secrets: inherit
+
+  upload-android:
+    if: ${{ needs.parse-screenshot.outputs.contains_screenshot == 'false' }}
+    needs:
+      - parse-screenshot
+      - build-android
+    uses: ./.github/workflows/21b-upload-release-android.yml
+    secrets: inherit
+
+  integration-screenshot-ios:
+    if: ${{ needs.parse-screenshot.outputs.contains_screenshot == 'true' }}
+    needs:
+      - parse-screenshot
+      - build-ios
+    uses: ./.github/workflows/12a-integration-screenshot-ios.yml
+    with:
+      model: "['iPhone 13 Pro Max', 'iPhone 8', 'iPad Pro (12.9-inch) (5th generation)', 'iPad Pro (11-inch) (3rd generation)']"
+      #model: "['iPhone SE (3rd generation)']"
+
+  integration-screenshot-android:
+    if: ${{ needs.parse-screenshot.outputs.contains_screenshot == 'true' }}
+    needs:
+      - parse-screenshot
+      - build-android
+    uses: ./.github/workflows/12b-integration-screenshot-android.yml
+    with:
+      api_level: 30
+      model: "['pixel_6']"
+
+  integration-screenshot-commit-ios:
+    if: ${{ needs.parse-screenshot.outputs.contains_screenshot == 'true' }}
+    needs:
+      - integration-screenshot-ios
+    uses: ./.github/workflows/13a-integration-screenshot-commit-ios.yml
+    with:
+      locale: "['en-US']"
+    secrets: inherit
+
+  integration-screenshot-commit-android:
+    if: ${{ needs.parse-screenshot.outputs.contains_screenshot == 'true' }}
+    needs:
+      - integration-screenshot-android
+    uses: ./.github/workflows/13b-integration-screenshot-commit-android.yml
+    with:
+      locale: "['en-US']"
+    secrets: inherit
+
+  upload-ios-screenhot:
+    needs:
+      - integration-screenshot-commit-ios
+    uses: ./.github/workflows/21a-upload-release-ios.yml
+    secrets: inherit
+
+  upload-android-screenhot:
+    needs:
+      - integration-screenshot-commit-android
+    uses: ./.github/workflows/21b-upload-release-android.yml
+    secrets: inherit

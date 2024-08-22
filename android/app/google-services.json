@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "835346148460",
+    "project_id": "flutter-pipelines",
+    "storage_bucket": "flutter-pipelines.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:835346148460:android:05a73a422796db5635fc49",
+        "android_client_info": {
+          "package_name": "org.microservicer.bootstrap"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCfA6KzamuuG2S6coZG1w7Z7ievodcuI8E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
